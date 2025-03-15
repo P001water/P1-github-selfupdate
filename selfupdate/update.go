@@ -3,16 +3,15 @@ package selfupdate
 import (
 	"bytes"
 	"fmt"
+	"github.com/blang/semver"
+	"github.com/inconshreveable/go-update"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
-
-	"github.com/blang/semver"
-	"github.com/inconshreveable/go-update"
 )
 
 func uncompressAndUpdate(src io.Reader, assetURL, cmdPath string) error {
@@ -28,10 +27,10 @@ func uncompressAndUpdate(src io.Reader, assetURL, cmdPath string) error {
 	})
 }
 
-func (up *Updater) downloadDirectlyFromURL(assetURL string) (io.ReadCloser, error) {
+func (up *Updater) downloadDirectlyFromURL(assetURL string) (io.ReadCloser, string, error) {
 	req, err := http.NewRequest("GET", assetURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to create HTTP request to %s: %s", assetURL, err)
+		return nil, "", fmt.Errorf("Failed to create HTTP request to %s: %s", assetURL, err)
 	}
 
 	req.Header.Add("Accept", "application/octet-stream")
@@ -42,14 +41,14 @@ func (up *Updater) downloadDirectlyFromURL(assetURL string) (io.ReadCloser, erro
 	// Use default HTTP client instead.
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to download a release file from %s: %s", assetURL, err)
+		return nil, "", fmt.Errorf("Failed to download a release file from %s: %s", assetURL, err)
 	}
 
 	if res.StatusCode != 200 {
-		return nil, fmt.Errorf("Failed to download a release file from %s: Not successful status %d", assetURL, res.StatusCode)
+		return nil, "", fmt.Errorf("Failed to download a release file from %s: Not successful status %d", assetURL, res.StatusCode)
 	}
 
-	return res.Body, nil
+	return res.Body, res.Header.Get("Content-Length"), nil
 }
 
 // UpdateTo downloads an executable from GitHub Releases API and replace current binary with the downloaded one.
@@ -63,14 +62,14 @@ func (up *Updater) UpdateTo(rel *Release, cmdPath string) error {
 	}
 	if redirectURL != "" {
 		log.Println("Redirect URL was returned while trying to download a release asset from GitHub API. Falling back to downloading from asset URL directly:", redirectURL)
-		src, err = up.downloadDirectlyFromURL(redirectURL)
+		src, _, err = up.downloadDirectlyFromURL(redirectURL)
 		if err != nil {
 			return err
 		}
 	}
 	defer src.Close()
 
-	data, err := ioutil.ReadAll(src)
+	data, err := io.ReadAll(src)
 	if err != nil {
 		return fmt.Errorf("Failed reading asset body: %v", err)
 	}
@@ -85,7 +84,7 @@ func (up *Updater) UpdateTo(rel *Release, cmdPath string) error {
 	}
 	if validationRedirectURL != "" {
 		log.Println("Redirect URL was returned while trying to download a release validation asset from GitHub API. Falling back to downloading from asset URL directly:", redirectURL)
-		validationSrc, err = up.downloadDirectlyFromURL(validationRedirectURL)
+		validationSrc, _, err = up.downloadDirectlyFromURL(validationRedirectURL)
 		if err != nil {
 			return err
 		}
@@ -93,7 +92,7 @@ func (up *Updater) UpdateTo(rel *Release, cmdPath string) error {
 
 	defer validationSrc.Close()
 
-	validationData, err := ioutil.ReadAll(validationSrc)
+	validationData, err := io.ReadAll(validationSrc)
 	if err != nil {
 		return fmt.Errorf("Failed reading validation asset body: %v", err)
 	}
@@ -160,10 +159,27 @@ func (up *Updater) UpdateSelf(current semver.Version, slug string) (*Release, er
 // cmdPath is a file path to command executable.
 func UpdateTo(assetURL, cmdPath string) error {
 	up := DefaultUpdater()
-	src, err := up.downloadDirectlyFromURL(assetURL)
+	src, length, err := up.downloadDirectlyFromURL(assetURL)
 	if err != nil {
 		return err
 	}
+
+	// 获取文件总大小
+	size, _ := strconv.ParseInt(length, 10, 64)
+	if size <= 0 {
+		return fmt.Errorf("failed to get content length from response")
+	}
+
+	// 包装 src 为 ProgressReader
+	progressSrc := NewProgressReader(src, size)
+
+	// 使用 bytes.Buffer 缓存下载的内容
+	var buffer bytes.Buffer
+	_, err = io.Copy(&buffer, progressSrc)
+	if err != nil {
+		return fmt.Errorf("failed to write downloaded content to buffer: %s", err)
+	}
+
 	defer src.Close()
 	return uncompressAndUpdate(src, assetURL, cmdPath)
 }
