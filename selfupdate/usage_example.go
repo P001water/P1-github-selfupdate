@@ -49,17 +49,46 @@ func ConfirmAndSelfUpdate(version string, repo string) {
 	}
 }
 
+func NoticeUpdate(version string, latest *Release) {
+	fmt.Printf("Current version: %v\n", version)
+	fmt.Printf("latest version: %v, Whether to update ? (yes or no)\n", latest.Version)
+	//读取用户输入
+	fmt.Printf("Input: ")
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Scan()
+	userInput := scanner.Text()
+
+	switch userInput {
+	case "yes":
+		fmt.Println("Updating...")
+		exe, err := os.Executable()
+		if err != nil {
+			log.Println("Could not locate executable path")
+			return
+		}
+		if err := UpdateTo(latest.AssetURL, exe); err != nil {
+			log.Println("Error occurred while updating binary:", err)
+			return
+		}
+		log.Println("Successfully updated to version", latest.Version)
+	case "no":
+		fmt.Println("Update cancelled.")
+	default:
+		fmt.Println("Invalid input. Update cancelled.")
+	}
+}
+
 // 检查是否是最新版本
-func CheckVersionIsLatest(version string, repo string) (bool, error) {
+func CheckVersionIsLatest(version string, repo string) (bool, *Release, error) {
 	latest, found, err := DetectLatest(repo)
 	if err != nil || !found {
-		return false, err
+		return false, latest, err
 	}
 
 	v := semver.MustParse(version)
 	if latest.Version.LTE(v) {
-		return true, nil
+		return true, latest, nil
 	} else {
-		return false, nil
+		return false, latest, nil
 	}
 }

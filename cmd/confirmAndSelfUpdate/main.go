@@ -52,6 +52,18 @@ func confirmAndSelfUpdate(version string, repo string) {
 	}
 }
 
+func Othertest() {
+	isLatest, latest, err := selfupdate.CheckVersionIsLatest(version, "P001water/P1finger")
+	if err != nil {
+		return
+	}
+	if isLatest {
+		fmt.Println("Current version is the latest")
+	} else {
+		selfupdate.NoticeUpdate(version, latest)
+	}
+}
+
 func main() {
-	confirmAndSelfUpdate(version, "P001water/P1finger")
+	Othertest()
 }
