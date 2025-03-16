@@ -23,7 +23,7 @@ func ConfirmAndSelfUpdate(version string, repo string) {
 
 	fmt.Printf("Current version: %v", version)
 	fmt.Printf("latest version: %v, Whether to update ? (yes or no)\n", latest.Version)
-	// 创建一个 Scanner 用于读取用户输入
+	//读取用户输入
 	fmt.Printf("Input: ")
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Scan()
