@@ -50,16 +50,14 @@ func ConfirmAndSelfUpdate(version string, repo string) {
 }
 
 // 检查是否是最新版本
-func CheckVersionUpdate(version string, repo string) (bool, error) {
+func CheckVersionIsLatest(version string, repo string) (bool, error) {
 	latest, found, err := DetectLatest(repo)
 	if err != nil || !found {
-		log.Println("Error occurred while detecting version:", err)
 		return false, err
 	}
 
 	v := semver.MustParse(version)
 	if latest.Version.LTE(v) {
-		log.Println("Current version is the latest")
 		return true, nil
 	} else {
 		return false, nil
